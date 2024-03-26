@@ -14,24 +14,37 @@ use self::schema::posts::dsl::*;
 fn main() {
     let conn = &mut establish_connection();
 
+    // Insert fake data
     // self::insert_fake_data(conn);
 
     // Get specific post
     let search_id = 1;
-    let results = get_specific_post(search_id, conn);
+    get_specific_post(search_id, conn);
 
-    // let results = posts
-    //     .limit(100)
-    //     .load::<Post>(conn)
-    //     .expect("Error loading posts");
+    // Edit record
+    let search_id = 6;
+    edit_record(search_id, conn);
 
-    for post in results {
-        println!("{}", post.title);
-        println!("----------\n");
-        println!("{}", post.body);
-    }
+    // Delete record
+    let search_id = 6;
+    delete_record(search_id, conn);
 
-    println!("Hello, world!");
+    // Get All Post
+    get_all_post(conn);
+}
+
+pub fn delete_record(search_id: i32, conn: &mut MysqlConnection) {
+    // Esta operacion puede devolver la cantidad de registros eliminados
+    diesel::delete(posts.find(search_id))
+        .execute(conn)
+        .expect("Error deleting post");
+}
+
+pub fn edit_record(search_id: i32, conn: &mut MysqlConnection) {
+    diesel::update(posts.find(search_id))
+        .set(title.eq("Empanadas"))
+        .execute(conn)
+        .expect("Error updating post");
 }
 
 pub fn get_specific_post(search_id: i32, conn: &mut MysqlConnection) -> Vec<Post> {
@@ -42,6 +55,19 @@ pub fn get_specific_post(search_id: i32, conn: &mut MysqlConnection) -> Vec<Post
         .expect("Error loading posts");
 
     return specific_post;
+}
+
+pub fn get_all_post(conn: &mut MysqlConnection) {
+    let results = posts
+        .limit(6)
+        .load::<Post>(conn)
+        .expect("Error loading posts");
+
+    for post in results {
+        println!("{}", post.title);
+        println!("----------\n");
+        println!("{}", post.body);
+    }
 }
 
 pub fn insert_fake_data(conn: &mut MysqlConnection) {
