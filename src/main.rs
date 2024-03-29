@@ -11,7 +11,7 @@ use diesel::r2d2;
 use diesel::r2d2::ConnectionManager;
 use platzi_rust_blog_post::establish_pool_connection;
 
-use self::models::Post;
+use self::models::{NewPost, Post};
 use self::schema::posts::dsl::*;
 
 use actix_web::{get, App, HttpResponse, HttpServer, Responder};
@@ -45,10 +45,32 @@ async fn index(pool: web::Data<DbPool>) -> impl Responder {
     }
 }
 
-// #[post("/new_post")]
-// async fn new_post(pool: web::Data<DbPool>) -> impl Responder {
+#[post("/new_post")]
+async fn add_post(pool: web::Data<DbPool>) -> impl Responder {
+    match pool.get() {
+        Ok(conn) => {
+            match web::block(move || {
+                let mut conn = conn;
 
-// }
+                let new_post = NewPost {
+                    title: "Nuevo Post",
+                    body: "Cuerpo del post",
+                    slug: "slug",
+                };
+                diesel::insert_into(posts)
+                    .values(&new_post)
+                    .execute(&mut conn)
+            })
+            .await
+            {
+                Ok(_) => HttpResponse::Ok().finish(),
+                Err(_) => HttpResponse::InternalServerError().finish(),
+            }
+        }
+        Err(_) => HttpResponse::InternalServerError().finish(),
+    }
+}
+
 #[actix_web::main] // or #[tokio::main]
 async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "debug");
@@ -58,6 +80,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .service(index)
+            .service(add_post)
             .app_data(web::Data::new(pool_connection.clone()))
     }) // move es para mover ownership de pool_connection a la closure de HttpServer el hilo principal
     .bind(("127.0.0.1", 8080))?
