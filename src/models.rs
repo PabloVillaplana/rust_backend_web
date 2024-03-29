@@ -1,5 +1,6 @@
-#[derive(Queryable, Debug, Clone)]
+use serde::{Deserialize, Serialize};
 
+#[derive(Queryable, Debug, Clone, Serialize, Deserialize)]
 pub struct Post {
     pub id: i32,
     pub title: String,
@@ -9,7 +10,6 @@ pub struct Post {
 
 use super::schema::posts;
 
-// Factory para crear nuevos posts
 #[derive(Insertable)]
 #[table_name = "posts"]
 pub struct NewPost<'a> {

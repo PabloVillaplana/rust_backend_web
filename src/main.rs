@@ -4,93 +4,63 @@ extern crate diesel;
 pub mod models;
 pub mod schema; // Modelos
 
+use actix_web::post;
+use actix_web::web;
 use diesel::prelude::*;
-use platzi_rust_blog_post::establish_connection;
+use diesel::r2d2;
+use diesel::r2d2::ConnectionManager;
+use platzi_rust_blog_post::establish_pool_connection;
 
-use self::models::{NewPost, Post};
-use self::schema::posts;
+use self::models::Post;
 use self::schema::posts::dsl::*;
 
-fn main() {
-    let conn = &mut establish_connection();
+use actix_web::{get, App, HttpResponse, HttpServer, Responder};
 
-    // Insert fake data
-    // self::insert_fake_data(conn);
+pub type DbPool = r2d2::Pool<ConnectionManager<MysqlConnection>>;
 
-    // Get specific post
-    let search_id = 1;
-    get_specific_post(search_id, conn);
+#[get("/")]
+async fn index(pool: web::Data<DbPool>) -> impl Responder {
+    match pool.get() {
+        Ok(conn) => {
+            match web::block(move || {
+                let mut conn = conn;
+                posts.load::<Post>(&mut conn)
+            })
+            .await
+            {
+                Ok(data) => {
+                    let mut respuesta = String::new();
 
-    // Edit record
-    let search_id = 6;
-    edit_record(search_id, conn);
+                    for post in data.unwrap() {
+                        let new_post = format!("{}\n{}\n", post.title, post.body);
+                        respuesta.push_str(&new_post);
+                    }
 
-    // Delete record
-    let search_id = 6;
-    delete_record(search_id, conn);
-
-    // Get All Post
-    get_all_post(conn);
-}
-
-pub fn delete_record(search_id: i32, conn: &mut MysqlConnection) {
-    // Esta operacion puede devolver la cantidad de registros eliminados
-    diesel::delete(posts.find(search_id))
-        .execute(conn)
-        .expect("Error deleting post");
-}
-
-pub fn edit_record(search_id: i32, conn: &mut MysqlConnection) {
-    diesel::update(posts.find(search_id))
-        .set(title.eq("Empanadas"))
-        .execute(conn)
-        .expect("Error updating post");
-}
-
-pub fn get_specific_post(search_id: i32, conn: &mut MysqlConnection) -> Vec<Post> {
-    let specific_post = posts
-        .filter(id.eq(search_id))
-        .limit(1)
-        .load::<Post>(conn)
-        .expect("Error loading posts");
-
-    return specific_post;
-}
-
-pub fn get_all_post(conn: &mut MysqlConnection) {
-    let results = posts
-        .limit(6)
-        .load::<Post>(conn)
-        .expect("Error loading posts");
-
-    for post in results {
-        println!("{}", post.title);
-        println!("----------\n");
-        println!("{}", post.body);
+                    HttpResponse::Ok().body(respuesta)
+                }
+                Err(_) => HttpResponse::InternalServerError().finish(),
+            }
+        }
+        Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
 
-pub fn insert_fake_data(conn: &mut MysqlConnection) {
-    let new_post = vec![
-        NewPost {
-            title: "Hello",
-            body: "World",
-            slug: "hello-world",
-        },
-        NewPost {
-            title: "Hello",
-            body: "World",
-            slug: "hello-world",
-        },
-        NewPost {
-            title: "Hello",
-            body: "World",
-            slug: "hello-world",
-        },
-    ];
+// #[post("/new_post")]
+// async fn new_post(pool: web::Data<DbPool>) -> impl Responder {
 
-    diesel::insert_into(posts::table)
-        .values(new_post)
-        .execute(conn)
-        .expect("Error saving new post");
+// }
+#[actix_web::main] // or #[tokio::main]
+async fn main() -> std::io::Result<()> {
+    std::env::set_var("RUST_LOG", "debug");
+    env_logger::init();
+    let pool_connection = establish_pool_connection();
+
+    HttpServer::new(move || {
+        App::new()
+            .service(index)
+            .app_data(web::Data::new(pool_connection.clone()))
+    }) // move es para mover ownership de pool_connection a la closure de HttpServer el hilo principal
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await
 }
